@@ -1,4 +1,4 @@
-####Task
+#### Task
 In the attached documents, find the most commonly occurring words and the sentences where they are used to create the following table:
 
 
@@ -14,7 +14,7 @@ This is an opportunity to display your engineering flair.
 We highly encourage you to showcase your engineering ability rather than only fulfilling the requirements of the task.  
 
 
-####My assumption:
+#### My assumption:
 
 Raw stats (exact match word frequencies) of provided docs is ~the same:
 
@@ -31,13 +31,19 @@ This basically follows general (known) results of basic English language with [t
 So I assume I need to try some more interesting approach:)  
   
 
-####My basic idea:
+#### My basic idea:
 
 - Use collections module for ease of word extraction and structuring of raw docs input data.  
 - Convert all input words into easily comparable **lowercase** vectors of 26 length:  
 
-  00001001000200100000000000 == hello  
+  0001001000200100000000000 == hello  
   abcdefghijklmnopqrstuvwxyz  
+
+
+| 0 | 0 | 0 | 0 | **1** | 0 | 0 | **1** | 0 | 0 | 0 | **2** | 0 | 0 | **1** | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | =hello |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|--------|
+| a | b | c | d | **e** | f | g | **h** | i | j | k | **l** | m | n | **o** | p | q | r | s | t | u | v | w | x | y | z |        |
+
 
 - Shrink dataset combining partial word matches (similar syntax expressions, lingual forms or plain mistypes)  
   For example:  
@@ -58,7 +64,7 @@ Further improvement & ideas:
   Just because same letter combination could some time result into different word (sequence matters)
   This is especially dangerous for short words.
   
-####Graph explanation of difference tolerance parameter for words of different lengths (characters)
+#### Graph explanation of difference tolerance parameter for words of different lengths (characters)
 
 This should be small to none for short words and dynamically adjusted into bigger numbers  
 Increase should not be linear so probably best defined with a bit sketched parabolic function  
@@ -70,7 +76,7 @@ Graph in https://www.desmos.com/calculator/dz0kvw0qjg
 
 ![Alt text](tolerance_parabola.png?raw=true "Parabolic dependency of vector tolerance vs. word length")
  
-####Running
+#### Running
 Clone this repo  
 Enable virtual env  
 ```
