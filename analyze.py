@@ -5,21 +5,37 @@
 # Form report table with results and sentences where most common words were used.
 # -
 
-from collections import Counter
-import numpy as np
-import pandas as pd
+import decimal  # Parabola is more accurate with decimals
 import glob
-import sys
+import numpy as np
+import nltk
+import pandas as pd
 import re
-# K-dimensional tree..
+import sys
+
+from collections import Counter
 from sklearn.neighbors import KDTree
 
-# Parabola is more accurate with decimals
-import decimal
 
-import timeit
+def fetch_file_content(file):
 
-def raw_stats(path):
+    try:
+        with open(file, "r") as data:
+            content = data.read()
+    except Exception as e:
+        print("Error occurred:{}".format(e.message))
+        sys.exit()
+
+    # Remove all non alphabetical (removes dots, commas etc.)
+    # Using strict a-z (instead of \W) because of few 'φ' in Wikipedia text that results in value error..
+    cleaned = re.sub('[^a-zA-Z]', ' ', content).lower()
+
+    # List of all the words in the cleaned data
+    content_list = cleaned.split()
+    return content_list
+
+
+def stats_raw(path):
 
     try:
         found = glob.glob(path)
@@ -29,39 +45,76 @@ def raw_stats(path):
         sys.exit()
 
     if len(found) == 0:
-        print("No files found...")
+        print("No files found at {}".format(path))
         sys.exit()
 
     for file in found:
 
-        try:
-            with open(file, "r") as data:
-                content = data.read()
-        except Exception as e:
-            print("Error occurred:{}".format(e.message))
-            sys.exit()
-
-        # Remove all non alphabetical (removes dots, commas etc.)
-        # Using strict a-z because of few 'φ' in Wikipedia text that results in value error..
-        cleaned = re.sub('[^a-zA-Z]', ' ', content).lower()
-
-        # List of all the words in the cleaned data
-        split_it = cleaned.split()
+        content_list = fetch_file_content(file)
 
         # Pass the split_it list to instance of Counter class.
-        counter = Counter(split_it)
+        dataset_counter = Counter(content_list)
 
         # most_common() produces k frequently encountered
         # input values and their respective counts.
-        most_occur = counter.most_common(10)
+        most_occur = dataset_counter.most_common(10)
 
         print("{} {}".format(file, most_occur))
 
 
+# For the purpose of this example with wiki - we need to add a target word param
+# This might be extended into some search functionality in the future instead of some raw stats
+def stats_advanced(path, query):
+
+    try:
+        found = glob.glob(path)
+
+    except Exception as e:
+        print("Error occurred while fetching files:{}".format(e.message))
+        sys.exit()
+
+    if len(found) == 0:
+        print("No files found at {}".format(path))
+        sys.exit()
+
+    for file in found:
+
+        content_list = fetch_file_content(file)
+
+        raw_list_of_vectors = []
+
+        for word in content_list:
+            raw_list_of_vectors.append(convert2vector(word))
+
+        raw_list_of_vectors = np.array(raw_list_of_vectors)
+
+        dataset_vector_tree = KDTree(raw_list_of_vectors, leaf_size=26)
+
+        # Explanation:
+        # This should be small to none for short words and dynamically adjusted into bigger numbers
+        # Increase should be accelerated so probably best defined with a bit sketched parabolic function
+        # For exact word "philosophy" (10 characters) from wikipedia - 2.4 founds best results (including mistype!)
+        # 2.5 already allows similar "PSYchology" to creep into resultset from same Wikipedia article:)
+        # I am using this point to interpolate backwards to 2 characters and forwards to infinity
+        # Approximate parabola that fits the "philosophy" numbers - is 0.024x^2
+
+        tolerance = decimal.Decimal("0.024") * decimal.Decimal(len(query) ** 2)
+
+        counts = dataset_vector_tree.query_radius([convert2vector(query)], tolerance, count_only=False)
+
+        results = []
+        for match in counts[0]:
+            # print(content_list[match])
+            results.append(content_list[match])
+
+        # draw_results accepts simple list (convert back from np array)
+
+        draw_results(results, file)
+
+
 def convert2vector(word):
-    # This is quite dirty here
+    # Just a proof of concept - quite dirty here
     # I am 100% sure there's a better way without re-declaring the alphabet..
-    # But this is just a proof of concept...
 
     alphabet = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u","v", "w", "x", "y", "z"]
     vect = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -73,85 +126,60 @@ def convert2vector(word):
     return np.array(vect)
 
 
-def main():
+def draw_results(matches, file):
 
-    with open("content/wikipedia-philosophy.txt", "r") as data:
-        content = data.read()
+    # Remove duplicates and join into one string with commas
+    matches_unique = ", ".join(set(matches))
 
-    # Remove all non alphabetical (removes dots, commas etc.)
-    # Using strict a-z because of few 'φ' in Wikipedia text that results in value error..
+    try:
+        with open(file, "r") as data:
+            content = data.read()
+    except Exception as e:
+        print("Error occurred:{}".format(e.message))
+        sys.exit()
 
-    cleaned = re.sub('[^a-zA-Z]', ' ', content).lower()
+    # In this implementation I only use nltk to extract sentences from content file
+    # Language should probably be detected from content before selecting a tokenizer
+    tokenizer = nltk.data.load('tokenizers/punkt/english.pickle')
 
-    # split() returns list of all the words in the string
-    split_it = cleaned.split()
+    # All sentences in the file
+    sentences_list = tokenizer.tokenize(content)
 
-    raw_list_of_vectors = []
+    # Loop sentences to find containing our query
+    # This one is also quite dirty
+    # Probably would be nicer with some lambda function or similar
 
-    for word in split_it:
-        raw_list_of_vectors.append(convert2vector(word))
-        #raw_list_of_vectors = np.append(raw_list_of_vectors, convert2vector(word))
+    sentences_match = []
 
-    raw_list_of_vectors = np.array(raw_list_of_vectors)
+    for sentence in sentences_list:
+        for query in matches_unique:
+            if query in sentence.lower():
+                sentences_match.append(sentence)
+                break
 
-    dataset_vector_tree = KDTree(raw_list_of_vectors, leaf_size=26)
+    print("Total of {} advanced matches found".format(len(matches)))
 
-    word = "philosophy"
+    # Use DataFrame to display results
+    data = {'Words(#)': [matches_unique], 'Documents': [file], 'Sentences containing the word': [str(len(sentences_match))]}
 
-    # Explanation:
-    # This should be small to none for short words and dynamically adjusted into bigger numbers
-    # Increase should be accelerated so probably best defined with a bit sketched parabolic function
-    # For exact word "philosophy" (10 characters) from wikipedia - 2.4 founds best results (including mistype!)
-    # 2.5 already allows similar "PSYchology" to creep into resultset from same Wikipedia article:)
-    # I am using this point to interpolate backwards to 2 characters and forwards to infinity
-    # Approximate parabola that fits the "philosophy" numbers - is 0.024x^2
-    # Graph in https://www.desmos.com/calculator/dz0kvw0qjg or README
-
-    tolerance = decimal.Decimal("0.024") * decimal.Decimal(len(word) ** 2)
-
-    counts = dataset_vector_tree.query_radius([convert2vector("philosophy")], tolerance, count_only=False)
-
-    for match in counts[0]:
-        print(split_it[match])
-
-    # print(dataset_vector_tree.query_radius(raw_list_of_vectors[6], r=1, count_only=True))
-    # print(len(raw_list_of_vectors))
-    # print('shape of tree is ', dataset_vector_tree.data)
-    # nearest = dataset_vector_tree.query(convert2vector("philosophy"), k=1, distance_upper_bound=9)
-
-    #vect = convert2vector("philosophy")
-    # res = dataset_vector_tree.query_radius(vect, r=1.5, count_only=True)
-    #print(res)
-
-
-
-    # print(nearest)
-
-    # Pass the split_it list to instance of Counter class.
-    # counter = Counter(split_it)
-
-    # most_common() produces k frequently encountered
-    # input values and their respective counts.
-    #most_occur = counter.most_common(10)
-
-    #print("{} {}".format("content/advanced.txt", most_occur))
-
-    #sentence = {'Word(#)': ['Word1', 'Word2', 'Word3', 'Word4', 'Word5'],
-    #             'Documents': ['doc1.txt', 'doc1.txt', 'doc1.txt', 'doc1.txt', 'doc1.txt'],
-    #             'Sentences containing the word': ['Let me begin by sa today.', 'Word2', 'Word3', 'Word4', 'Word5']
-    #            }
-
-    #df = pd.DataFrame(sentence, columns=['Word(#)', 'Documents', 'Sentences containing the word'])
+    df = pd.DataFrame(data, columns=['Words(#)', 'Documents', 'Sentences containing the word'])
 
     # Setup DataFrame to print whole data without (default) truncation after 50 chars
-    #pd.set_option('display.max_colwidth', -1)
+    pd.set_option('display.max_colwidth', -1)
 
     # Print DataFrame table without first column with indexes (a bit confusing if present)
-    #print(df.to_string(index=False))
+    print(df.to_string(index=False))
+
+
+def main():
+
+    print("\nRAW stats (exact matches):\n")
+    stats_raw("content/*.txt")
+    print("\nAdvanced analytics:\n")
+    stats_advanced("content/wikipedia-philosophy.txt", "philosophy")
 
 
 if __name__ == "__main__":
-
-    path = "content/*.txt"
-    raw_stats(path)
     main()
+
+
